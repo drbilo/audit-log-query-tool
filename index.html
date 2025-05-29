@@ -16,6 +16,7 @@
             min-height: 100vh;
             padding: 20px;
             box-sizing: border-box;
+            overflow-x: hidden; /* Prevent horizontal scroll due to animations */
         }
         .container {
             background-color: #ffffff;
@@ -54,12 +55,17 @@
             font-weight: 600;
             transition: background-color 0.2s ease-in-out, transform 0.1s ease-in-out;
         }
-        .button-primary:hover {
+        .button-primary:hover:not(:disabled) { /* Only hover if not disabled */
             background-color: #E6C62F; /* Slightly darker primary on hover */
             transform: translateY(-1px); /* Slight lift on hover */
         }
-        .button-primary:active {
+        .button-primary:active:not(:disabled) { /* Only active if not disabled */
             transform: translateY(0); /* Reset on click */
+        }
+        .button-primary:disabled {
+            background-color: #cccccc; /* Greyed out when disabled */
+            cursor: not-allowed;
+            color: #666666;
         }
         .message-box {
             background-color: #fefcbf; /* Light yellow for warnings/info */
@@ -157,7 +163,7 @@
 </head>
 <body class="bg-gray-100 flex items-center justify-center min-h-screen p-4">
     <div class="container bg-white rounded-xl shadow-lg p-8 space-y-6">
-        <h1 class="text-3xl font-bold text-center text-gray-800 mb-6">Audit Log Object Query Tool</h1>
+        <h1 class="text-3xl font-bold text-center text-gray-800 mb-6">📓 Audit Log Object Query Tool</h1>
 
         <div class="input-group">
             <label for="endpoint" class="block text-gray-700 text-sm mb-2">GraphQL Endpoint:</label>
@@ -169,7 +175,7 @@
         </div>
 
         <div class="input-group">
-            <label for="bearerToken" class="block text-gray-700 text-sm mb-2">Bearer Token (Optional):</label>
+            <label for="bearerToken" class="block text-gray-700 text-sm mb-2">Bearer Token:</label>
             <input type="password" id="bearerToken" placeholder="Your Bearer Token"
                    class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
             <div class="text-xs text-gray-500 mt-2">
@@ -197,7 +203,7 @@
                 <input type="number" id="firstCountInput" value="20" min="1"
                        class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
             </div>
-            </div>
+        </div>
 
         <div id="raw-query-tab" class="tab-content space-y-6">
             <div class="input-group">
@@ -208,7 +214,7 @@
         </div>
 
         <button id="executeQuery"
-                class="w-full button-primary flex items-center justify-center">
+                class="w-full button-primary flex items-center justify-center" disabled>
             Execute Query
             <span id="loadingSpinner" class="loading-spinner hidden"></span>
         </button>
@@ -256,6 +262,38 @@
 `;
 
         /**
+         * Creates and animates whimsical, joy-inspiring elements.
+         * This function is now empty as requested.
+         */
+        function createJoyfulEffect() {
+            // Emojis and animation logic removed as requested.
+        }
+
+
+        /**
+         * Validates the required input fields and enables/disables the execute button.
+         */
+        function validateInputs() {
+            const endpoint = endpointInput.value.trim();
+            const bearerToken = bearerTokenInput.value.trim(); // Get bearer token value
+            let isValid = false;
+
+            // Validation logic depends on the active tab
+            if (document.getElementById('raw-query-tab').classList.contains('active')) {
+                // For Raw Query tab, endpoint, bearer token, and raw query content are required
+                const rawQueryContent = rawQueryInput.value.trim();
+                isValid = endpoint.length > 0 && bearerToken.length > 0 && rawQueryContent.length > 0;
+            } else { // Query Builder tab is active
+                // For Query Builder tab, endpoint, bearer token, object ID, and first count are required
+                const objectId = objectIdInput.value.trim();
+                const firstCount = parseInt(firstCountInput.value.trim(), 10);
+                isValid = endpoint.length > 0 && bearerToken.length > 0 && objectId.length > 0 && !isNaN(firstCount) && firstCount >= 1;
+            }
+
+            executeButton.disabled = !isValid;
+        }
+
+        /**
          * Generates the GraphQL query string based on current input values.
          * This function no longer updates a DOM element directly.
          * @returns {string} The generated GraphQL query string.
@@ -287,6 +325,7 @@
             if (tabId === 'raw-query-tab') {
                 rawQueryInput.value = generateQueryString(); // Populate with the latest generated query
             }
+            validateInputs(); // Re-validate when tab changes
         }
 
         /**
@@ -328,6 +367,7 @@
                     resultPre.textContent = '';
                     executeButton.disabled = false;
                     loadingSpinner.classList.add('hidden');
+                    validateInputs(); // Re-validate
                     return;
                 }
             } else { // Query Builder tab is active
@@ -339,6 +379,7 @@
                     resultPre.textContent = '';
                     executeButton.disabled = false;
                     loadingSpinner.classList.add('hidden');
+                    validateInputs(); // Re-validate
                     return;
                 }
 
@@ -347,6 +388,7 @@
                     resultPre.textContent = '';
                     executeButton.disabled = false;
                     loadingSpinner.classList.add('hidden');
+                    validateInputs(); // Re-validate
                     return;
                 }
                 // Construct the final query on the fly for execution
@@ -358,6 +400,16 @@
                 resultPre.textContent = ''; // Clear loading text
                 executeButton.disabled = false;
                 loadingSpinner.classList.add('hidden');
+                validateInputs(); // Re-validate
+                return;
+            }
+
+            if (!bearerToken) { // Added specific check for bearer token during execution
+                showMessage('Please enter a Bearer Token.', 'error');
+                resultPre.textContent = '';
+                executeButton.disabled = false;
+                loadingSpinner.classList.add('hidden');
+                validateInputs(); // Re-validate
                 return;
             }
 
@@ -388,9 +440,16 @@
                     return;
                 }
 
+                // Check for GraphQL errors within the response body
+                if (data.errors && data.errors.length > 0) {
+                    const errorMessage = data.errors[0].message || 'An unknown GraphQL error occurred.';
+                    showMessage(`Query executed with errors! Error: ${errorMessage}`, 'error');
+                } else {
+                    showMessage('Query executed successfully!', 'success');
+                }
+
                 // Display the formatted JSON result
                 resultPre.textContent = JSON.stringify(data, null, 2);
-                showMessage('Query executed successfully!', 'success');
 
             } catch (error) {
                 console.error('Error executing GraphQL query:', error);
@@ -399,6 +458,7 @@
             } finally {
                 executeButton.disabled = false; // Re-enable button
                 loadingSpinner.classList.add('hidden'); // Hide spinner
+                validateInputs(); // Re-validate to ensure button state is correct after operation
             }
         }
 
@@ -412,15 +472,19 @@
             });
         });
 
-        // Add event listeners to trigger query generation (for Raw Query tab's pre-fill)
-        objectIdInput.addEventListener('input', generateQueryString); // Just generate, not display
-        firstCountInput.addEventListener('input', generateQueryString); // Just generate, not display
+        // Add event listeners to trigger validation
+        endpointInput.addEventListener('change', validateInputs);
+        bearerTokenInput.addEventListener('input', validateInputs); // Add listener for bearer token
+        objectIdInput.addEventListener('input', validateInputs);
+        firstCountInput.addEventListener('input', validateInputs);
+        rawQueryInput.addEventListener('input', validateInputs);
 
         // Initialize the app on load
         window.onload = () => {
             objectIdInput.value = '778d61cc-4ce0-4c6b-8d21-bbe6cc9681e4'; // Example object ID
             firstCountInput.value = '20'; // Default logs to return
             showTab('query-builder-tab'); // Show the Query Builder tab by default
+            validateInputs(); // Initial validation on load
         };
 
     </script>
