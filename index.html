@@ -172,6 +172,9 @@
             <label for="bearerToken" class="block text-gray-700 text-sm mb-2">Bearer Token (Optional):</label>
             <input type="password" id="bearerToken" placeholder="Your Bearer Token"
                    class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            <div class="text-xs text-gray-500 mt-2">
+                To find your Bearer Token, open your browser's developer tools (F12 or Cmd+Option+I), go to the "Network" tab, and look for a "graphql" entry. In the "Headers" section, find the "Authorization" header. Copy the token *after* "Bearer ".
+            </div>
         </div>
 
         <div class="tabs">
@@ -184,6 +187,9 @@
                 <label for="objectIdInput" class="block text-gray-700 text-sm mb-2">Object ID:</label>
                 <input type="text" id="objectIdInput" placeholder="e.g., 778d61cc-4ce0-4c6b-8d21-bbe6cc9681e4"
                        class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                <div class="text-xs text-gray-500 mt-2">
+                    This is the ID of the object you want to query audit logs for (e.g., a Screen ID, Channel ID, etc.).
+                </div>
             </div>
 
             <div class="input-group">
