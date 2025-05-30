@@ -136,6 +136,12 @@
         }
 
         /* Pagination button specific styles */
+        .pagination-controls {
+            display: flex;
+            gap: 10px; /* Space between buttons */
+            justify-content: center;
+            margin-top: 20px;
+        }
         .button-pagination {
             background-color: #677EF0; /* Secondary Brand Color */
             color: white;
@@ -143,6 +149,8 @@
             border-radius: 8px;
             font-weight: 600;
             transition: background-color 0.2s ease-in-out, transform 0.1s ease-in-out;
+            flex-grow: 1; /* Allow buttons to grow and fill space */
+            max-width: 200px; /* Limit max width for larger screens */
         }
         .button-pagination:hover:not(:disabled) {
             background-color: #5A6EDD; /* Darker secondary on hover */
@@ -243,6 +251,14 @@
             .checkbox-grid {
                 grid-template-columns: 1fr; /* Single column on small screens */
             }
+            .pagination-controls {
+                flex-direction: column;
+                align-items: center;
+            }
+            .button-pagination {
+                width: 100%;
+                max-width: none;
+            }
         }
         @media (max-width: 480px) {
             body {
@@ -272,7 +288,7 @@
             <input type="password" id="bearerToken" placeholder="Your Bearer Token"
                    class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
             <div class="text-xs text-gray-500 mt-2">
-                You can obtain a Bearer Token by checking the "Authorization" header in the network tab (look for a "graphql" entry) of your browser's developer tools (F12 or Cmd+Option+I). Copy the token *after* "Bearer ". Alternatively, you can create an API Token in the "Developer" section of your Account Settings.
+                You can obtain a Bearer Token by checking the "Authorization" header in the network tab (F12 or Cmd+Option+I), look for a "graphql" entry. In the "Headers" section, find the "Authorization" header. Copy the token *after* "Bearer ". Alternatively, you can create an API Token in the "Developer" section of your Account Settings.
             </div>
         </div>
 
@@ -348,11 +364,18 @@
             <span id="loadingSpinner" class="loading-spinner hidden"></span>
         </button>
 
-        <button id="nextPageButton"
-                class="w-full button-pagination flex items-center justify-center mt-4" disabled>
-            Next Page &raquo;
-            <span id="nextPageSpinner" class="loading-spinner hidden"></span>
-        </button>
+        <div class="pagination-controls">
+            <button id="previousPageButton"
+                    class="button-pagination flex items-center justify-center" disabled>
+                &laquo; Previous Page
+                <span id="previousPageSpinner" class="loading-spinner hidden"></span>
+            </button>
+            <button id="nextPageButton"
+                    class="button-pagination flex items-center justify-center" disabled>
+                Next Page &raquo;
+                <span id="nextPageSpinner" class="loading-spinner hidden"></span>
+            </button>
+        </div>
 
         <div id="messageBox" class="message-box hidden"></div>
 
@@ -377,6 +400,8 @@
 
         const nextPageButton = document.getElementById('nextPageButton');
         const nextPageSpinner = document.getElementById('nextPageSpinner');
+        const previousPageButton = document.getElementById('previousPageButton'); // New previous page button
+        const previousPageSpinner = document.getElementById('previousPageSpinner'); // New previous page spinner
 
         const tabButtons = document.querySelectorAll('.tab-button');
         const tabContents = document.querySelectorAll('.tab-content');
@@ -387,7 +412,6 @@
         const fieldsCheckboxesContainer = document.getElementById('fieldsCheckboxesContainer');
 
         const userIdInput = document.getElementById('userIdInput');
-        // Removed userLookupQueryDisplay
 
         let lastQueryResultNodesCount = 0;
 
@@ -470,6 +494,7 @@
             const bearerToken = bearerTokenInput.value.trim();
             let isExecuteButtonValid = false;
             let isNextPageButtonValid = false;
+            let isPreviousPageButtonValid = false; // New validation for previous button
 
             const activeTabId = document.querySelector('.tab-content.active').id;
 
@@ -477,10 +502,12 @@
                 const rawQueryContent = rawQueryInput.value.trim();
                 isExecuteButtonValid = endpoint.length > 0 && bearerToken.length > 0 && rawQueryContent.length > 0;
                 isNextPageButtonValid = false;
+                isPreviousPageButtonValid = false;
             } else if (activeTabId === 'user-lookup-tab') {
                 const userId = userIdInput.value.trim();
                 isExecuteButtonValid = endpoint.length > 0 && bearerToken.length > 0 && userId.length > 0;
                 isNextPageButtonValid = false;
+                isPreviousPageButtonValid = false;
             } else { // Query Builder tab is active
                 const objectId = objectIdInput.value.trim();
                 const firstCount = parseInt(firstCountInput.value.trim(), 10);
@@ -493,10 +520,12 @@
                                        selectedFields.length > 0;
 
                 isNextPageButtonValid = isExecuteButtonValid && (lastQueryResultNodesCount === firstCount);
+                isPreviousPageButtonValid = isExecuteButtonValid && (offset > 0); // Enable if offset is greater than 0
             }
 
             executeButton.disabled = !isExecuteButtonValid;
             nextPageButton.disabled = !isNextPageButtonValid;
+            previousPageButton.disabled = !isPreviousPageButtonValid; // Set disabled state for previous button
         }
 
         /**
@@ -545,11 +574,9 @@
             document.getElementById(tabId).classList.add('active');
             document.querySelector(`.tab-button[data-tab="${tabId}"]`).classList.add('active');
 
-            // Update read-only query displays based on the active tab
             if (tabId === 'raw-query-tab') {
                 rawQueryInput.value = generateQueryString();
             }
-            // Removed userLookupQueryDisplay.value update
             validateInputs(); // Re-validate when tab changes
         }
 
@@ -573,16 +600,18 @@
 
         /**
          * Executes the GraphQL query.
-         * @param {boolean} isNextPageCall - True if this call is from the "Next Page" button.
+         * @param {boolean} isPaginationCall - True if this call is from a pagination button.
          */
-        async function executeGraphQLQuery(isNextPageCall = false) {
+        async function executeGraphQLQuery(isPaginationCall = false) {
             hideMessage();
             resultPre.textContent = 'Loading...';
             executeButton.disabled = true;
             nextPageButton.disabled = true;
+            previousPageButton.disabled = true; // Disable previous button during query
             loadingSpinner.classList.remove('hidden');
-            if (isNextPageCall) {
+            if (isPaginationCall) {
                  nextPageSpinner.classList.remove('hidden');
+                 previousPageSpinner.classList.remove('hidden'); // Show spinner for previous button too
             }
 
             const endpoint = endpointInput.value;
@@ -598,7 +627,7 @@
                     resultPre.textContent = '';
                     executeButton.disabled = false;
                     loadingSpinner.classList.add('hidden');
-                    if (isNextPageCall) nextPageSpinner.classList.add('hidden');
+                    if (isPaginationCall) { nextPageSpinner.classList.add('hidden'); previousPageSpinner.classList.add('hidden'); }
                     validateInputs();
                     return;
                 }
@@ -626,7 +655,7 @@
                     resultPre.textContent = '';
                     executeButton.disabled = false;
                     loadingSpinner.classList.add('hidden');
-                    if (isNextPageCall) nextPageSpinner.classList.add('hidden');
+                    if (isPaginationCall) { nextPageSpinner.classList.add('hidden'); previousPageSpinner.classList.add('hidden'); }
                     validateInputs();
                     return;
                 }
@@ -636,7 +665,7 @@
                     resultPre.textContent = '';
                     executeButton.disabled = false;
                     loadingSpinner.classList.add('hidden');
-                    if (isNextPageCall) nextPageSpinner.classList.add('hidden');
+                    if (isPaginationCall) { nextPageSpinner.classList.add('hidden'); previousPageSpinner.classList.add('hidden'); }
                     validateInputs();
                     return;
                 }
@@ -646,7 +675,7 @@
                     resultPre.textContent = '';
                     executeButton.disabled = false;
                     loadingSpinner.classList.add('hidden');
-                    if (isNextPageCall) nextPageSpinner.classList.add('hidden');
+                    if (isPaginationCall) { nextPageSpinner.classList.add('hidden'); previousPageSpinner.classList.add('hidden'); }
                     validateInputs();
                     return;
                 }
@@ -655,7 +684,7 @@
                     resultPre.textContent = '';
                     executeButton.disabled = false;
                     loadingSpinner.classList.add('hidden');
-                    if (isNextPageCall) nextPageSpinner.classList.add('hidden');
+                    if (isPaginationCall) { nextPageSpinner.classList.add('hidden'); previousPageSpinner.classList.add('hidden'); }
                     validateInputs();
                     return;
                 }
@@ -667,7 +696,7 @@
                 resultPre.textContent = '';
                 executeButton.disabled = false;
                 loadingSpinner.classList.add('hidden');
-                if (isNextPageCall) nextPageSpinner.classList.add('hidden');
+                if (isPaginationCall) { nextPageSpinner.classList.add('hidden'); previousPageSpinner.classList.add('hidden'); }
                 validateInputs();
                 return;
             }
@@ -677,7 +706,7 @@
                 resultPre.textContent = '';
                 executeButton.disabled = false;
                 loadingSpinner.classList.add('hidden');
-                if (isNextPageCall) nextPageSpinner.classList.add('hidden');
+                if (isPaginationCall) { nextPageSpinner.classList.add('hidden'); previousPageSpinner.classList.add('hidden'); }
                 validateInputs();
                 return;
             }
@@ -730,7 +759,7 @@
             } finally {
                 executeButton.disabled = false;
                 loadingSpinner.classList.add('hidden');
-                if (isNextPageCall) nextPageSpinner.classList.add('hidden');
+                if (isPaginationCall) { nextPageSpinner.classList.add('hidden'); previousPageSpinner.classList.add('hidden'); }
                 validateInputs(); // Re-validate to ensure button state is correct after operation
             }
         }
@@ -757,12 +786,37 @@
             executeGraphQLQuery(true); // Pass true to indicate it's a next page call
         }
 
+        /**
+         * Handles the click event for the "Previous Page" button.
+         */
+        function handlePreviousPage() {
+            if (document.querySelector('.tab-content.active').id !== 'query-builder-tab') {
+                showMessage('Pagination is only available in the "Query Builder" tab.', 'info');
+                return;
+            }
+
+            const currentOffset = parseInt(offsetInput.value.trim(), 10);
+            const firstCount = parseInt(firstCountInput.value.trim(), 10);
+
+            if (isNaN(currentOffset) || isNaN(firstCount) || firstCount < 1) {
+                showMessage('Invalid "Number of Logs to Return" or "Offset" for pagination.', 'error');
+                return;
+            }
+
+            // Decrement offset, ensuring it doesn't go below 0
+            offsetInput.value = Math.max(0, currentOffset - firstCount);
+            executeGraphQLQuery(true); // Pass true to indicate it's a pagination call
+        }
+
 
         // Add event listener to the execute button
         executeButton.addEventListener('click', () => executeGraphQLQuery(false)); // Pass false for regular execution
 
         // Add event listener for the new "Next Page" button
         nextPageButton.addEventListener('click', handleNextPage);
+
+        // Add event listener for the new "Previous Page" button
+        previousPageButton.addEventListener('click', handlePreviousPage);
 
         // Add event listeners for tab switching
         tabButtons.forEach(button => {
@@ -786,7 +840,6 @@
         offsetInput.addEventListener('input', validateInputs);
         rawQueryInput.addEventListener('input', validateInputs);
         userIdInput.addEventListener('input', validateInputs);
-        // Removed userIdInput.addEventListener('input', () => userLookupQueryDisplay.value = generateQueryString());
 
         // Initialize the app on load
         window.onload = () => {
