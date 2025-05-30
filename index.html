@@ -157,6 +157,73 @@
             color: #666666;
         }
 
+        /* Accordion specific styles */
+        .accordion-header {
+            background-color: #f1f5f9; /* Lighter gray for header */
+            padding: 12px 15px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background-color 0.2s ease-in-out;
+        }
+        .accordion-header:hover {
+            background-color: #e2e8f0;
+        }
+        .accordion-content {
+            border: 1px solid #e2e8f0;
+            border-top: none;
+            border-radius: 0 0 8px 8px;
+            padding: 15px;
+            display: none; /* Hidden by default */
+            overflow: hidden;
+            transition: max-height 0.3s ease-out; /* For smooth collapse */
+            max-height: 0; /* Initial state for collapse animation */
+        }
+        .accordion-content.expanded {
+            display: block;
+            max-height: 500px; /* Max height for animation, adjust as needed */
+        }
+        .accordion-arrow {
+            transition: transform 0.2s ease-in-out;
+        }
+        .accordion-arrow.rotate {
+            transform: rotate(180deg);
+        }
+
+        /* Checkbox grid improvements */
+        .checkbox-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); /* Adjusted min-width for better spacing */
+            gap: 12px; /* Increased gap */
+        }
+        .checkbox-item {
+            display: flex;
+            align-items: center;
+            padding: 4px; /* Small padding for hover effect */
+            border-radius: 4px;
+            transition: background-color 0.15s ease-in-out;
+        }
+        .checkbox-item:hover {
+            background-color: #eef2f6; /* Light hover background */
+        }
+        .checkbox-item input[type="checkbox"] {
+            margin-right: 10px; /* More space between checkbox and label */
+            min-width: 20px; /* Larger checkbox */
+            min-height: 20px;
+            accent-color: #677EF0; /* Use secondary brand color for checkbox fill */
+            cursor: pointer;
+        }
+        .checkbox-item label {
+            margin-bottom: 0;
+            font-weight: normal;
+            font-size: 0.95rem; /* Slightly larger text */
+            color: #334155; /* Darker gray for better contrast */
+            cursor: pointer;
+        }
+
         /* Responsive adjustments */
         @media (max-width: 768px) {
             .container {
@@ -167,11 +234,14 @@
                 padding: 10px 20px;
             }
             .tabs {
-                flex-direction: column; /* Stack tabs vertically on small screens */
+                flex-direction: column;
             }
             .tab-button {
                 width: 100%;
                 margin-bottom: 5px;
+            }
+            .checkbox-grid {
+                grid-template-columns: 1fr; /* Single column on small screens */
             }
         }
         @media (max-width: 480px) {
@@ -209,6 +279,7 @@
         <div class="tabs">
             <button class="tab-button active" data-tab="query-builder-tab">Query Builder</button>
             <button class="tab-button" data-tab="raw-query-tab">Raw Query</button>
+            <button class="tab-button" data-tab="user-lookup-tab">User Lookup</button>
         </div>
 
         <div id="query-builder-tab" class="tab-content active space-y-6">
@@ -237,6 +308,18 @@
                     </div>
                 </div>
             </div>
+
+            <div class="input-group">
+                <button id="fieldsToggle" class="accordion-header">
+                    <span>Fields to Return</span>
+                    <span id="accordionArrow" class="accordion-arrow">▼</span>
+                </button>
+                <div id="fieldsContent" class="accordion-content">
+                    <div class="checkbox-grid" id="fieldsCheckboxesContainer">
+                        </div>
+                </div>
+            </div>
+
         </div>
 
         <div id="raw-query-tab" class="tab-content space-y-6">
@@ -246,6 +329,23 @@
                           class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"></textarea>
             </div>
         </div>
+
+        <div id="user-lookup-tab" class="tab-content space-y-6">
+            <div class="input-group">
+                <label for="userIdInput" class="block text-gray-700 text-sm mb-2">User ID:</label>
+                <input type="text" id="userIdInput" placeholder="e.g., user-123-abc-456"
+                       class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                <div class="text-xs text-gray-500 mt-2">
+                    Enter the ID of the user you want to look up.
+                </div>
+            </div>
+            <div class="input-group">
+                <label for="userLookupQueryDisplay" class="block text-gray-700 text-sm mb-2">Generated User Lookup Query (Read-only):</label>
+                <textarea id="userLookupQueryDisplay" readonly
+                          class="w-full p-3 border border-gray-300 rounded-lg bg-gray-50 text-gray-600 cursor-not-allowed"></textarea>
+            </div>
+        </div>
+
 
         <button id="executeQuery"
                 class="w-full button-primary flex items-center justify-center" disabled>
@@ -280,32 +380,92 @@
         const messageBox = document.getElementById('messageBox');
         const loadingSpinner = document.getElementById('loadingSpinner');
 
-        const nextPageButton = document.getElementById('nextPageButton'); // New next page button
-        const nextPageSpinner = document.getElementById('nextPageSpinner'); // New next page spinner
+        const nextPageButton = document.getElementById('nextPageButton');
+        const nextPageSpinner = document.getElementById('nextPageSpinner');
 
         const tabButtons = document.querySelectorAll('.tab-button');
         const tabContents = document.querySelectorAll('.tab-content');
 
-        let lastQueryResultNodesCount = 0; // Store the number of nodes returned by the last successful query
+        const fieldsToggle = document.getElementById('fieldsToggle');
+        const fieldsContent = document.getElementById('fieldsContent');
+        const accordionArrow = document.getElementById('accordionArrow');
+        const fieldsCheckboxesContainer = document.getElementById('fieldsCheckboxesContainer');
 
-        // The base GraphQL query with placeholders for objectId, first count, and offset
-        const BASE_GRAPHQL_QUERY = `
+        const userIdInput = document.getElementById('userIdInput');
+        const userLookupQueryDisplay = document.getElementById('userLookupQueryDisplay');
+
+        let lastQueryResultNodesCount = 0;
+
+        // All possible audit log fields
+        const ALL_AUDIT_LOG_FIELDS = [
+            "id", "orgId", "objectType", "objectId", "action", "clientAddr", "clientPort",
+            "changedFields", "previousFields", "systemAccessId", "userId", "applicationName",
+            "transactionId", "sessionUserName", "remoteAddress", "tokenId", "relid", // Corrected 'relId' to 'relid'
+            "timestamp", "systemTokenId", "systemUserId", "spaceId", "traceId", "objectName"
+        ];
+
+        // Default selected fields for the initial audit log query
+        const DEFAULT_SELECTED_AUDIT_LOG_FIELDS = [
+            "id", "objectId", "objectType", "objectName", "action", "timestamp", "changedFields", "previousFields", "userId"
+        ];
+
+        // Fields for userById query
+        const USER_LOOKUP_FIELDS = [
+            "email", "status", "givenName", "familyName", "provider", "createdAt"
+        ];
+
+        // Base GraphQL query for audit logs
+        const AUDIT_LOG_BASE_QUERY = `
 {
   allLogsV2ByObjectId (objectId:"{OBJECT_ID_PLACEHOLDER}",
     first:{FIRST_COUNT_PLACEHOLDER}, offset:{OFFSET_PLACEHOLDER}) {
     nodes {
-      id
-      objectId
-      objectType
-      objectName
-      action
-      timestamp
-      changedFields
-      previousFields
+      {NODES_FIELDS_PLACEHOLDER}
     }
   }
 }
 `;
+
+        // Base GraphQL query for userById
+        const USER_BY_ID_BASE_QUERY = `
+{
+  userById (id:"{USER_ID_PLACEHOLDER}") {
+    {USER_FIELDS_PLACEHOLDER}
+  }
+}
+`;
+
+        /**
+         * Populates the "Fields to Return" checkboxes and sets default selections.
+         */
+        function populateFieldsCheckboxes() {
+            fieldsCheckboxesContainer.innerHTML = '';
+            ALL_AUDIT_LOG_FIELDS.forEach(field => {
+                const div = document.createElement('div');
+                div.classList.add('checkbox-item');
+
+                const input = document.createElement('input');
+                input.type = 'checkbox';
+                input.id = `field-${field}`;
+                input.value = field;
+                input.classList.add('rounded', 'text-indigo-600', 'focus:ring-indigo-500');
+
+                if (DEFAULT_SELECTED_AUDIT_LOG_FIELDS.includes(field)) {
+                    input.checked = true;
+                }
+
+                input.addEventListener('change', validateInputs);
+
+                const label = document.createElement('label');
+                label.htmlFor = `field-${field}`;
+                label.textContent = field;
+                label.classList.add('text-gray-700');
+
+                div.appendChild(input);
+                div.appendChild(label);
+                fieldsCheckboxesContainer.appendChild(div);
+            });
+        }
 
         /**
          * Validates the required input fields and enables/disables the execute and next page buttons.
@@ -316,22 +476,27 @@
             let isExecuteButtonValid = false;
             let isNextPageButtonValid = false;
 
-            // Validation logic depends on the active tab
-            if (document.getElementById('raw-query-tab').classList.contains('active')) {
+            const activeTabId = document.querySelector('.tab-content.active').id;
+
+            if (activeTabId === 'raw-query-tab') {
                 const rawQueryContent = rawQueryInput.value.trim();
                 isExecuteButtonValid = endpoint.length > 0 && bearerToken.length > 0 && rawQueryContent.length > 0;
-                isNextPageButtonValid = false; // Next page button is always disabled in Raw Query tab
+                isNextPageButtonValid = false;
+            } else if (activeTabId === 'user-lookup-tab') {
+                const userId = userIdInput.value.trim();
+                isExecuteButtonValid = endpoint.length > 0 && bearerToken.length > 0 && userId.length > 0;
+                isNextPageButtonValid = false;
             } else { // Query Builder tab is active
                 const objectId = objectIdInput.value.trim();
                 const firstCount = parseInt(firstCountInput.value.trim(), 10);
                 const offset = parseInt(offsetInput.value.trim(), 10);
+                const selectedFields = Array.from(document.querySelectorAll('#fieldsCheckboxesContainer input[type="checkbox"]:checked'));
 
                 isExecuteButtonValid = endpoint.length > 0 && bearerToken.length > 0 && objectId.length > 0 &&
                                        !isNaN(firstCount) && firstCount >= 1 &&
-                                       !isNaN(offset) && offset >= 0;
+                                       !isNaN(offset) && offset >= 0 &&
+                                       selectedFields.length > 0;
 
-                // Enable next page button if execute button is valid AND
-                // the last query returned exactly 'firstCount' nodes (suggesting more pages)
                 isNextPageButtonValid = isExecuteButtonValid && (lastQueryResultNodesCount === firstCount);
             }
 
@@ -340,17 +505,34 @@
         }
 
         /**
-         * Generates the GraphQL query string based on current input values.
+         * Generates the GraphQL query string based on current input values and active tab.
          * @returns {string} The generated GraphQL query string.
          */
         function generateQueryString() {
-            const objectId = objectIdInput.value.trim();
-            const firstCount = firstCountInput.value.trim();
-            const offset = offsetInput.value.trim();
-            let currentQuery = BASE_GRAPHQL_QUERY.replace('{OBJECT_ID_PLACEHOLDER}', objectId);
-            currentQuery = currentQuery.replace('{FIRST_COUNT_PLACEHOLDER}', firstCount || '20');
-            currentQuery = currentQuery.replace('{OFFSET_PLACEHOLDER}', offset || '0');
-            return currentQuery;
+            const activeTabId = document.querySelector('.tab-content.active').id;
+
+            if (activeTabId === 'user-lookup-tab') {
+                const userId = userIdInput.value.trim();
+                const userFieldsString = USER_LOOKUP_FIELDS.join('\n    ');
+                return USER_BY_ID_BASE_QUERY.replace('{USER_ID_PLACEHOLDER}', userId)
+                                           .replace('{USER_FIELDS_PLACEHOLDER}', userFieldsString);
+            } else { // Default to Audit Log Query
+                const objectId = objectIdInput.value.trim();
+                const firstCount = firstCountInput.value.trim();
+                const offset = offsetInput.value.trim();
+
+                const selectedFields = Array.from(document.querySelectorAll('#fieldsCheckboxesContainer input[type="checkbox"]:checked'))
+                                    .map(checkbox => checkbox.value);
+
+                const fieldsString = selectedFields.length > 0 ? selectedFields.join('\n      ') : '';
+
+                let currentQuery = AUDIT_LOG_BASE_QUERY.replace('{OBJECT_ID_PLACEHOLDER}', objectId);
+                currentQuery = currentQuery.replace('{FIRST_COUNT_PLACEHOLDER}', firstCount || '20');
+                currentQuery = currentQuery.replace('{OFFSET_PLACEHOLDER}', offset || '0');
+                currentQuery = currentQuery.replace('{NODES_FIELDS_PLACEHOLDER}', fieldsString);
+
+                return currentQuery;
+            }
         }
 
         /**
@@ -368,8 +550,11 @@
             document.getElementById(tabId).classList.add('active');
             document.querySelector(`.tab-button[data-tab="${tabId}"]`).classList.add('active');
 
+            // Update read-only query displays based on the active tab
             if (tabId === 'raw-query-tab') {
                 rawQueryInput.value = generateQueryString();
+            } else if (tabId === 'user-lookup-tab') {
+                userLookupQueryDisplay.value = generateQueryString();
             }
             validateInputs(); // Re-validate when tab changes
         }
@@ -400,18 +585,19 @@
             hideMessage();
             resultPre.textContent = 'Loading...';
             executeButton.disabled = true;
-            nextPageButton.disabled = true; // Disable next page button during query
+            nextPageButton.disabled = true;
             loadingSpinner.classList.remove('hidden');
             if (isNextPageCall) {
                  nextPageSpinner.classList.remove('hidden');
             }
 
-
             const endpoint = endpointInput.value;
             const bearerToken = bearerTokenInput.value.trim();
 
             let finalQuery;
-            if (document.getElementById('raw-query-tab').classList.contains('active')) {
+            const activeTabId = document.querySelector('.tab-content.active').id;
+
+            if (activeTabId === 'raw-query-tab') {
                 finalQuery = rawQueryInput.value.trim();
                 if (!finalQuery) {
                     showMessage('Please enter a GraphQL Query in the Raw Query tab.', 'error');
@@ -422,10 +608,24 @@
                     validateInputs();
                     return;
                 }
-            } else {
+            } else if (activeTabId === 'user-lookup-tab') {
+                const userId = userIdInput.value.trim();
+                if (!userId) {
+                     showMessage('Please enter a User ID in the User Lookup tab.', 'error');
+                     resultPre.textContent = '';
+                     executeButton.disabled = false;
+                     loadingSpinner.classList.add('hidden');
+                     validateInputs();
+                     return;
+                }
+                finalQuery = generateQueryString();
+            }
+            else { // Query Builder tab is active
                 const objectId = objectIdInput.value.trim();
                 const firstCount = parseInt(firstCountInput.value.trim(), 10);
                 const offset = parseInt(offsetInput.value.trim(), 10);
+                const selectedFields = Array.from(document.querySelectorAll('#fieldsCheckboxesContainer input[type="checkbox"]:checked'));
+
 
                 if (!objectId) {
                     showMessage('Please enter an Object ID in the Query Builder tab.', 'error');
@@ -449,6 +649,15 @@
 
                 if (isNaN(offset) || offset < 0) {
                     showMessage('Please enter a valid number (0 or greater) for "Offset".', 'error');
+                    resultPre.textContent = '';
+                    executeButton.disabled = false;
+                    loadingSpinner.classList.add('hidden');
+                    if (isNextPageCall) nextPageSpinner.classList.add('hidden');
+                    validateInputs();
+                    return;
+                }
+                if (selectedFields.length === 0) {
+                    showMessage('Please select at least one field to return in the Query Builder tab.', 'error');
                     resultPre.textContent = '';
                     executeButton.disabled = false;
                     loadingSpinner.classList.add('hidden');
@@ -499,10 +708,14 @@
 
                 const data = await response.json();
 
-                // Store the number of nodes returned for pagination logic
-                lastQueryResultNodesCount = (data.data && data.data.allLogsV2ByObjectId && data.data.allLogsV2ByObjectId.nodes)
-                                             ? data.data.allLogsV2ByObjectId.nodes.length
-                                             : 0;
+                // Only update lastQueryResultNodesCount for the Audit Log tab
+                if (activeTabId === 'query-builder-tab') {
+                    lastQueryResultNodesCount = (data.data && data.data.allLogsV2ByObjectId && data.data.allLogsV2ByObjectId.nodes)
+                                                 ? data.data.allLogsV2ByObjectId.nodes.length
+                                                 : 0;
+                } else {
+                    lastQueryResultNodesCount = 0; // Reset for other tabs where pagination is not applicable
+                }
 
 
                 if (!response.ok) {
@@ -532,7 +745,7 @@
          * Handles the click event for the "Next Page" button.
          */
         function handleNextPage() {
-            if (document.getElementById('raw-query-tab').classList.contains('active')) {
+            if (document.querySelector('.tab-content.active').id !== 'query-builder-tab') {
                 showMessage('Pagination is only available in the "Query Builder" tab.', 'info');
                 return;
             }
@@ -564,6 +777,13 @@
             });
         });
 
+        // Accordion toggle functionality
+        fieldsToggle.addEventListener('click', () => {
+            fieldsContent.classList.toggle('expanded');
+            accordionArrow.classList.toggle('rotate');
+        });
+
+
         // Add event listeners to trigger validation
         endpointInput.addEventListener('change', validateInputs);
         bearerTokenInput.addEventListener('input', validateInputs);
@@ -571,14 +791,18 @@
         firstCountInput.addEventListener('input', validateInputs);
         offsetInput.addEventListener('input', validateInputs);
         rawQueryInput.addEventListener('input', validateInputs);
+        userIdInput.addEventListener('input', validateInputs);
+        userIdInput.addEventListener('input', () => userLookupQueryDisplay.value = generateQueryString());
 
         // Initialize the app on load
         window.onload = () => {
-            objectIdInput.value = ''; // Set to blank as requested
-            firstCountInput.value = '20'; // Default logs to return
-            offsetInput.value = '0'; // Default offset
-            showTab('query-builder-tab'); // Show the Query Builder tab by default
-            validateInputs(); // Initial validation on load
+            objectIdInput.value = '';
+            firstCountInput.value = '20';
+            offsetInput.value = '0';
+            userIdInput.value = '';
+            populateFieldsCheckboxes();
+            showTab('query-builder-tab');
+            validateInputs();
         };
 
     </script>
