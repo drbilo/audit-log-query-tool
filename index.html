@@ -339,12 +339,7 @@
                     Enter the ID of the user you want to look up.
                 </div>
             </div>
-            <div class="input-group">
-                <label for="userLookupQueryDisplay" class="block text-gray-700 text-sm mb-2">Generated User Lookup Query (Read-only):</label>
-                <textarea id="userLookupQueryDisplay" readonly
-                          class="w-full p-3 border border-gray-300 rounded-lg bg-gray-50 text-gray-600 cursor-not-allowed"></textarea>
             </div>
-        </div>
 
 
         <button id="executeQuery"
@@ -392,7 +387,7 @@
         const fieldsCheckboxesContainer = document.getElementById('fieldsCheckboxesContainer');
 
         const userIdInput = document.getElementById('userIdInput');
-        const userLookupQueryDisplay = document.getElementById('userLookupQueryDisplay');
+        // Removed userLookupQueryDisplay
 
         let lastQueryResultNodesCount = 0;
 
@@ -400,7 +395,7 @@
         const ALL_AUDIT_LOG_FIELDS = [
             "id", "orgId", "objectType", "objectId", "action", "clientAddr", "clientPort",
             "changedFields", "previousFields", "systemAccessId", "userId", "applicationName",
-            "transactionId", "sessionUserName", "remoteAddress", "tokenId", "relid", // Corrected 'relId' to 'relid'
+            "transactionId", "sessionUserName", "remoteAddress", "tokenId", "relid",
             "timestamp", "systemTokenId", "systemUserId", "spaceId", "traceId", "objectName"
         ];
 
@@ -553,9 +548,8 @@
             // Update read-only query displays based on the active tab
             if (tabId === 'raw-query-tab') {
                 rawQueryInput.value = generateQueryString();
-            } else if (tabId === 'user-lookup-tab') {
-                userLookupQueryDisplay.value = generateQueryString();
             }
+            // Removed userLookupQueryDisplay.value update
             validateInputs(); // Re-validate when tab changes
         }
 
@@ -792,7 +786,7 @@
         offsetInput.addEventListener('input', validateInputs);
         rawQueryInput.addEventListener('input', validateInputs);
         userIdInput.addEventListener('input', validateInputs);
-        userIdInput.addEventListener('input', () => userLookupQueryDisplay.value = generateQueryString());
+        // Removed userIdInput.addEventListener('input', () => userLookupQueryDisplay.value = generateQueryString());
 
         // Initialize the app on load
         window.onload = () => {
