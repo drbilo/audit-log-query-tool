@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Audit Log Object Query Tool</title>
+    <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext x='-5' y='90' font-size='90'%3E%F0%9F%93%93%3C/text%3E%3C/svg%3E">
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -211,7 +212,7 @@
             display: flex;
             align-items: center;
             padding: 4px; /* Small padding for hover effect */
-            border-radius: 4px;
+            border-radius: 44px;
             transition: background-color 0.15s ease-in-out;
         }
         .checkbox-item:hover {
@@ -383,6 +384,12 @@
             <label class="block text-gray-700 text-sm mb-2">Result:</label>
             <pre id="result" class="bg-gray-100 text-gray-800 p-4 rounded-lg border border-gray-200 min-h-[100px]"></pre>
         </div>
+
+        <!-- New Export to CSV button -->
+        <button id="exportCsvButton"
+                class="w-full button-primary flex items-center justify-center mt-4" disabled>
+            Export Logs to CSV
+        </button>
     </div>
 
     <script>
@@ -400,8 +407,8 @@
 
         const nextPageButton = document.getElementById('nextPageButton');
         const nextPageSpinner = document.getElementById('nextPageSpinner');
-        const previousPageButton = document.getElementById('previousPageButton'); // New previous page button
-        const previousPageSpinner = document.getElementById('previousPageSpinner'); // New previous page spinner
+        const previousPageButton = document.getElementById('previousPageButton');
+        const previousPageSpinner = document.getElementById('previousPageSpinner');
 
         const tabButtons = document.querySelectorAll('.tab-button');
         const tabContents = document.querySelectorAll('.tab-content');
@@ -413,7 +420,10 @@
 
         const userIdInput = document.getElementById('userIdInput');
 
-        let lastQueryResultNodesCount = 0;
+        const exportCsvButton = document.getElementById('exportCsvButton'); // New export CSV button
+
+        let lastQueryResultNodesCount = 0; // Stores how many nodes were returned by the last successful audit log query
+        let lastSuccessfulQueryResult = null; // Stores the entire JSON response of the last successful query
 
         // All possible audit log fields
         const ALL_AUDIT_LOG_FIELDS = [
@@ -494,7 +504,8 @@
             const bearerToken = bearerTokenInput.value.trim();
             let isExecuteButtonValid = false;
             let isNextPageButtonValid = false;
-            let isPreviousPageButtonValid = false; // New validation for previous button
+            let isPreviousPageButtonValid = false;
+            let isExportCsvButtonValid = false; // New validation for export CSV button
 
             const activeTabId = document.querySelector('.tab-content.active').id;
 
@@ -520,12 +531,20 @@
                                        selectedFields.length > 0;
 
                 isNextPageButtonValid = isExecuteButtonValid && (lastQueryResultNodesCount === firstCount);
-                isPreviousPageButtonValid = isExecuteButtonValid && (offset > 0); // Enable if offset is greater than 0
+                isPreviousPageButtonValid = isExecuteButtonValid && (offset > 0);
             }
 
             executeButton.disabled = !isExecuteButtonValid;
             nextPageButton.disabled = !isNextPageButtonValid;
-            previousPageButton.disabled = !isPreviousPageButtonValid; // Set disabled state for previous button
+            previousPageButton.disabled = !isPreviousPageButtonValid;
+
+            // Enable export CSV button if last successful query returned audit log nodes
+            isExportCsvButtonValid = (lastSuccessfulQueryResult &&
+                                      lastSuccessfulQueryResult.data &&
+                                      lastSuccessfulQueryResult.data.allLogsV2ByObjectId &&
+                                      lastSuccessfulQueryResult.data.allLogsV2ByObjectId.nodes &&
+                                      lastSuccessfulQueryResult.data.allLogsV2ByObjectId.nodes.length > 0);
+            exportCsvButton.disabled = !isExportCsvButtonValid;
         }
 
         /**
@@ -607,11 +626,12 @@
             resultPre.textContent = 'Loading...';
             executeButton.disabled = true;
             nextPageButton.disabled = true;
-            previousPageButton.disabled = true; // Disable previous button during query
+            previousPageButton.disabled = true;
+            exportCsvButton.disabled = true; // Disable export button during query
             loadingSpinner.classList.remove('hidden');
             if (isPaginationCall) {
                  nextPageSpinner.classList.remove('hidden');
-                 previousPageSpinner.classList.remove('hidden'); // Show spinner for previous button too
+                 previousPageSpinner.classList.remove('hidden');
             }
 
             const endpoint = endpointInput.value;
@@ -730,6 +750,7 @@
                 });
 
                 const data = await response.json();
+                lastSuccessfulQueryResult = data; // Store the full response
 
                 // Only update lastQueryResultNodesCount for the Audit Log tab
                 if (activeTabId === 'query-builder-tab') {
@@ -808,15 +829,67 @@
             executeGraphQLQuery(true); // Pass true to indicate it's a pagination call
         }
 
+        /**
+         * Exports the current audit log results to a CSV file.
+         */
+        function exportLogsToCsv() {
+            if (!lastSuccessfulQueryResult || !lastSuccessfulQueryResult.data || !lastSuccessfulQueryResult.data.allLogsV2ByObjectId || !lastSuccessfulQueryResult.data.allLogsV2ByObjectId.nodes || lastSuccessfulQueryResult.data.allLogsV2ByObjectId.nodes.length === 0) {
+                showMessage('No audit log data available to export to CSV.', 'info');
+                return;
+            }
+
+            const logs = lastSuccessfulQueryResult.data.allLogsV2ByObjectId.nodes;
+            const headers = ALL_AUDIT_LOG_FIELDS; // Use all possible fields as headers for consistency
+
+            let csvContent = headers.map(header => `"${header}"`).join(',') + '\n'; // CSV header row
+
+            logs.forEach(log => {
+                const row = headers.map(header => {
+                    let value = log[header];
+                    if (value === null || value === undefined) {
+                        value = '';
+                    } else if (typeof value === 'object') {
+                        // Stringify objects like changedFields and previousFields
+                        value = JSON.stringify(value);
+                    } else {
+                        value = String(value);
+                    }
+                    // Escape double quotes by doubling them, and enclose in quotes if value contains comma or double quote
+                    if (value.includes(',') || value.includes('"')) {
+                        value = `"${value.replace(/"/g, '""')}"`;
+                    }
+                    return value;
+                });
+                csvContent += row.join(',') + '\n';
+            });
+
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+
+            link.setAttribute('href', url);
+            link.setAttribute('download', 'audit_logs.csv');
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+
+            showMessage('Audit logs exported to audit_logs.csv!', 'success');
+        }
+
 
         // Add event listener to the execute button
-        executeButton.addEventListener('click', () => executeGraphQLQuery(false)); // Pass false for regular execution
+        executeButton.addEventListener('click', () => executeGraphQLQuery(false));
 
         // Add event listener for the new "Next Page" button
         nextPageButton.addEventListener('click', handleNextPage);
 
         // Add event listener for the new "Previous Page" button
         previousPageButton.addEventListener('click', handlePreviousPage);
+
+        // Add event listener for the Export CSV button
+        exportCsvButton.addEventListener('click', exportLogsToCsv);
 
         // Add event listeners for tab switching
         tabButtons.forEach(button => {
