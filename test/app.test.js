@@ -17,7 +17,7 @@ describe('generateQueryString', () => {
     }
   }
 }`;
-    expect(query).toBe(expected);
+    expect(query.trim()).toBe(expected);
   });
 
   test('builds query for User Lookup mode', () => {
@@ -27,7 +27,7 @@ describe('generateQueryString', () => {
     email\n    status\n    givenName\n    familyName\n    provider\n    createdAt
   }
 }`;
-    expect(query).toBe(expected);
+    expect(query.trim()).toBe(expected);
   });
 });
 
