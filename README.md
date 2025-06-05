@@ -23,3 +23,4 @@ The primary purpose of this tool is to provide a user-friendly interface for con
 *   **Query Builder:** Simplifies query creation with a visual interface.
 *   **Raw Query:** Allows for advanced querying using raw GraphQL.
 *   **User Lookup:** Facilitates easy searching for user-related audit data.
+*   **Export Logs to CSV:** Download audit log results as a CSV file for offline analysis.
