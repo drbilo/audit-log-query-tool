@@ -7,6 +7,7 @@
     <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext x='-5' y='90' font-size='90'%3E%F0%9F%93%93%3C/text%3E%3C/svg%3E">
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="src/app.js"></script>
     <style>
         /* Custom styles for better aesthetics and responsiveness */
         body {
@@ -548,37 +549,6 @@
         }
 
         /**
-         * Generates the GraphQL query string based on current input values and active tab.
-         * @returns {string} The generated GraphQL query string.
-         */
-        function generateQueryString() {
-            const activeTabId = document.querySelector('.tab-content.active').id;
-
-            if (activeTabId === 'user-lookup-tab') {
-                const userId = userIdInput.value.trim();
-                const userFieldsString = USER_LOOKUP_FIELDS.join('\n    ');
-                return USER_BY_ID_BASE_QUERY.replace('{USER_ID_PLACEHOLDER}', userId)
-                                           .replace('{USER_FIELDS_PLACEHOLDER}', userFieldsString);
-            } else { // Default to Audit Log Query
-                const objectId = objectIdInput.value.trim();
-                const firstCount = firstCountInput.value.trim();
-                const offset = offsetInput.value.trim();
-
-                const selectedFields = Array.from(document.querySelectorAll('#fieldsCheckboxesContainer input[type="checkbox"]:checked'))
-                                    .map(checkbox => checkbox.value);
-
-                const fieldsString = selectedFields.length > 0 ? selectedFields.join('\n      ') : '';
-
-                let currentQuery = AUDIT_LOG_BASE_QUERY.replace('{OBJECT_ID_PLACEHOLDER}', objectId);
-                currentQuery = currentQuery.replace('{FIRST_COUNT_PLACEHOLDER}', firstCount || '20');
-                currentQuery = currentQuery.replace('{OFFSET_PLACEHOLDER}', offset || '0');
-                currentQuery = currentQuery.replace('{NODES_FIELDS_PLACEHOLDER}', fieldsString);
-
-                return currentQuery;
-            }
-        }
-
-        /**
          * Shows the specified tab content and sets the active state for tab buttons.
          * @param {string} tabId - The ID of the tab content to show.
          */
@@ -827,55 +797,6 @@
             // Decrement offset, ensuring it doesn't go below 0
             offsetInput.value = Math.max(0, currentOffset - firstCount);
             executeGraphQLQuery(true); // Pass true to indicate it's a pagination call
-        }
-
-        /**
-         * Exports the current audit log results to a CSV file.
-         */
-        function exportLogsToCsv() {
-            if (!lastSuccessfulQueryResult || !lastSuccessfulQueryResult.data || !lastSuccessfulQueryResult.data.allLogsV2ByObjectId || !lastSuccessfulQueryResult.data.allLogsV2ByObjectId.nodes || lastSuccessfulQueryResult.data.allLogsV2ByObjectId.nodes.length === 0) {
-                showMessage('No audit log data available to export to CSV.', 'info');
-                return;
-            }
-
-            const logs = lastSuccessfulQueryResult.data.allLogsV2ByObjectId.nodes;
-            const headers = ALL_AUDIT_LOG_FIELDS; // Use all possible fields as headers for consistency
-
-            let csvContent = headers.map(header => `"${header}"`).join(',') + '\n'; // CSV header row
-
-            logs.forEach(log => {
-                const row = headers.map(header => {
-                    let value = log[header];
-                    if (value === null || value === undefined) {
-                        value = '';
-                    } else if (typeof value === 'object') {
-                        // Stringify objects like changedFields and previousFields
-                        value = JSON.stringify(value);
-                    } else {
-                        value = String(value);
-                    }
-                    // Escape double quotes by doubling them, and enclose in quotes if value contains comma or double quote
-                    if (value.includes(',') || value.includes('"')) {
-                        value = `"${value.replace(/"/g, '""')}"`;
-                    }
-                    return value;
-                });
-                csvContent += row.join(',') + '\n';
-            });
-
-            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement('a');
-            const url = URL.createObjectURL(blob);
-
-            link.setAttribute('href', url);
-            link.setAttribute('download', 'audit_logs.csv');
-            link.style.visibility = 'hidden';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            URL.revokeObjectURL(url);
-
-            showMessage('Audit logs exported to audit_logs.csv!', 'success');
         }
 
 
