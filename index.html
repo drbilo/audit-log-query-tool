@@ -297,6 +297,7 @@
             <button class="tab-button active" data-tab="query-builder-tab">Query Builder</button>
             <button class="tab-button" data-tab="raw-query-tab">Raw Query</button>
             <button class="tab-button" data-tab="user-lookup-tab">User Lookup</button>
+            <button class="tab-button" data-tab="remove-permissions-tab">Remove Global Permissions</button>
         </div>
 
         <div id="query-builder-tab" class="tab-content active space-y-6">
@@ -358,6 +359,25 @@
             </div>
             </div>
 
+        <!-- New Remove Global Permissions Tab Content -->
+        <div id="remove-permissions-tab" class="tab-content space-y-6">
+            <div class="input-group">
+                <label for="removePermissionsMutation" class="block text-gray-700 text-sm mb-2">Mutation (Read-only):</label>
+                <textarea id="removePermissionsMutation" readonly
+                          class="w-full p-3 border border-gray-300 rounded-lg bg-gray-50 text-gray-600 cursor-not-allowed"
+                          rows="8"></textarea>
+            </div>
+            <div class="input-group">
+                <label for="removePermissionsVariables" class="block text-gray-700 text-sm mb-2">Mutation Variables (Read-only):</label>
+                <textarea id="removePermissionsVariables" readonly
+                          class="w-full p-3 border border-gray-300 rounded-lg bg-gray-50 text-gray-600 cursor-not-allowed"
+                          rows="4"></textarea>
+            </div>
+            <div class="text-xs text-red-500 mt-2">
+                WARNING: This mutation will remove all default global user permissions for the organization. Use with caution.
+            </div>
+        </div>
+
 
         <button id="executeQuery"
                 class="w-full button-primary flex items-center justify-center" disabled>
@@ -385,7 +405,6 @@
             <pre id="result" class="bg-gray-100 text-gray-800 p-4 rounded-lg border border-gray-200 min-h-[100px]"></pre>
         </div>
 
-        <!-- New Export to CSV button -->
         <button id="exportCsvButton"
                 class="w-full button-primary flex items-center justify-center mt-4" disabled>
             Export Logs to CSV
@@ -420,10 +439,13 @@
 
         const userIdInput = document.getElementById('userIdInput');
 
-        const exportCsvButton = document.getElementById('exportCsvButton'); // New export CSV button
+        const removePermissionsMutationDisplay = document.getElementById('removePermissionsMutation'); // New
+        const removePermissionsVariablesDisplay = document.getElementById('removePermissionsVariables'); // New
 
-        let lastQueryResultNodesCount = 0; // Stores how many nodes were returned by the last successful audit log query
-        let lastSuccessfulQueryResult = null; // Stores the entire JSON response of the last successful query
+        const exportCsvButton = document.getElementById('exportCsvButton');
+
+        let lastQueryResultNodesCount = 0;
+        let lastSuccessfulQueryResult = null;
 
         // All possible audit log fields
         const ALL_AUDIT_LOG_FIELDS = [
@@ -460,6 +482,28 @@
 {
   userById (id:"{USER_ID_PLACEHOLDER}") {
     {USER_FIELDS_PLACEHOLDER}
+  }
+}
+`;
+
+        // Mutation for removing global permissions
+        const REMOVE_GLOBAL_PERMISSIONS_MUTATION = `
+mutation setOrgDefaultUserPermissions($input: SetOrgDefaultUserPermissionsInput!) {
+    setOrgDefaultUserPermissions(input: $input) {
+    	org {
+        id
+        name
+        defaultUserPermissions
+      }
+    }
+}
+`;
+
+        // Variables for removing global permissions
+        const REMOVE_GLOBAL_PERMISSIONS_VARIABLES = `
+{
+  "input": {
+    "permissions": []
   }
 }
 `;
@@ -505,7 +549,7 @@
             let isExecuteButtonValid = false;
             let isNextPageButtonValid = false;
             let isPreviousPageButtonValid = false;
-            let isExportCsvButtonValid = false; // New validation for export CSV button
+            let isExportCsvButtonValid = false;
 
             const activeTabId = document.querySelector('.tab-content.active').id;
 
@@ -519,7 +563,12 @@
                 isExecuteButtonValid = endpoint.length > 0 && bearerToken.length > 0 && userId.length > 0;
                 isNextPageButtonValid = false;
                 isPreviousPageButtonValid = false;
-            } else { // Query Builder tab is active
+            } else if (activeTabId === 'remove-permissions-tab') { // Validation for new tab
+                isExecuteButtonValid = endpoint.length > 0 && bearerToken.length > 0;
+                isNextPageButtonValid = false;
+                isPreviousPageButtonValid = false;
+            }
+            else { // Query Builder tab is active
                 const objectId = objectIdInput.value.trim();
                 const firstCount = parseInt(firstCountInput.value.trim(), 10);
                 const offset = parseInt(offsetInput.value.trim(), 10);
@@ -538,7 +587,6 @@
             nextPageButton.disabled = !isNextPageButtonValid;
             previousPageButton.disabled = !isPreviousPageButtonValid;
 
-            // Enable export CSV button if last successful query returned audit log nodes
             isExportCsvButtonValid = (lastSuccessfulQueryResult &&
                                       lastSuccessfulQueryResult.data &&
                                       lastSuccessfulQueryResult.data.allLogsV2ByObjectId &&
@@ -548,8 +596,8 @@
         }
 
         /**
-         * Generates the GraphQL query string based on current input values and active tab.
-         * @returns {string} The generated GraphQL query string.
+         * Generates the GraphQL query/mutation string based on current input values and active tab.
+         * @returns {string} The generated GraphQL query/mutation string.
          */
         function generateQueryString() {
             const activeTabId = document.querySelector('.tab-content.active').id;
@@ -559,7 +607,10 @@
                 const userFieldsString = USER_LOOKUP_FIELDS.join('\n    ');
                 return USER_BY_ID_BASE_QUERY.replace('{USER_ID_PLACEHOLDER}', userId)
                                            .replace('{USER_FIELDS_PLACEHOLDER}', userFieldsString);
-            } else { // Default to Audit Log Query
+            } else if (activeTabId === 'remove-permissions-tab') { // Return fixed mutation for new tab
+                return REMOVE_GLOBAL_PERMISSIONS_MUTATION;
+            }
+            else { // Default to Audit Log Query
                 const objectId = objectIdInput.value.trim();
                 const firstCount = firstCountInput.value.trim();
                 const offset = offsetInput.value.trim();
@@ -593,8 +644,12 @@
             document.getElementById(tabId).classList.add('active');
             document.querySelector(`.tab-button[data-tab="${tabId}"]`).classList.add('active');
 
+            // Update read-only query/mutation displays based on the active tab
             if (tabId === 'raw-query-tab') {
                 rawQueryInput.value = generateQueryString();
+            } else if (tabId === 'remove-permissions-tab') {
+                removePermissionsMutationDisplay.value = REMOVE_GLOBAL_PERMISSIONS_MUTATION;
+                removePermissionsVariablesDisplay.value = REMOVE_GLOBAL_PERMISSIONS_VARIABLES;
             }
             validateInputs(); // Re-validate when tab changes
         }
@@ -618,7 +673,7 @@
         }
 
         /**
-         * Executes the GraphQL query.
+         * Executes the GraphQL query/mutation.
          * @param {boolean} isPaginationCall - True if this call is from a pagination button.
          */
         async function executeGraphQLQuery(isPaginationCall = false) {
@@ -627,7 +682,7 @@
             executeButton.disabled = true;
             nextPageButton.disabled = true;
             previousPageButton.disabled = true;
-            exportCsvButton.disabled = true; // Disable export button during query
+            exportCsvButton.disabled = true;
             loadingSpinner.classList.remove('hidden');
             if (isPaginationCall) {
                  nextPageSpinner.classList.remove('hidden');
@@ -638,6 +693,7 @@
             const bearerToken = bearerTokenInput.value.trim();
 
             let finalQuery;
+            let queryVariables = {}; // Initialize variables object
             const activeTabId = document.querySelector('.tab-content.active').id;
 
             if (activeTabId === 'raw-query-tab') {
@@ -662,6 +718,18 @@
                      return;
                 }
                 finalQuery = generateQueryString();
+            } else if (activeTabId === 'remove-permissions-tab') { // Logic for new mutation tab
+                finalQuery = REMOVE_GLOBAL_PERMISSIONS_MUTATION;
+                try {
+                    queryVariables = JSON.parse(REMOVE_GLOBAL_PERMISSIONS_VARIABLES);
+                } catch (e) {
+                    showMessage('Error parsing mutation variables for "Remove Global Permissions" tab.', 'error');
+                    resultPre.textContent = '';
+                    executeButton.disabled = false;
+                    loadingSpinner.classList.add('hidden');
+                    validateInputs();
+                    return;
+                }
             }
             else { // Query Builder tab is active
                 const objectId = objectIdInput.value.trim();
@@ -745,20 +813,20 @@
                     method: 'POST',
                     headers: headers,
                     body: JSON.stringify({
-                        query: finalQuery
+                        query: finalQuery,
+                        variables: queryVariables // Include variables in the request body
                     })
                 });
 
                 const data = await response.json();
-                lastSuccessfulQueryResult = data; // Store the full response
+                lastSuccessfulQueryResult = data;
 
-                // Only update lastQueryResultNodesCount for the Audit Log tab
                 if (activeTabId === 'query-builder-tab') {
                     lastQueryResultNodesCount = (data.data && data.data.allLogsV2ByObjectId && data.data.allLogsV2ByObjectId.nodes)
                                                  ? data.data.allLogsV2ByObjectId.nodes.length
                                                  : 0;
                 } else {
-                    lastQueryResultNodesCount = 0; // Reset for other tabs where pagination is not applicable
+                    lastQueryResultNodesCount = 0;
                 }
 
 
@@ -781,7 +849,7 @@
                 executeButton.disabled = false;
                 loadingSpinner.classList.add('hidden');
                 if (isPaginationCall) { nextPageSpinner.classList.add('hidden'); previousPageSpinner.classList.add('hidden'); }
-                validateInputs(); // Re-validate to ensure button state is correct after operation
+                validateInputs();
             }
         }
 
@@ -802,9 +870,8 @@
                 return;
             }
 
-            // Increment offset and re-run query
             offsetInput.value = currentOffset + firstCount;
-            executeGraphQLQuery(true); // Pass true to indicate it's a next page call
+            executeGraphQLQuery(true);
         }
 
         /**
@@ -824,9 +891,8 @@
                 return;
             }
 
-            // Decrement offset, ensuring it doesn't go below 0
             offsetInput.value = Math.max(0, currentOffset - firstCount);
-            executeGraphQLQuery(true); // Pass true to indicate it's a pagination call
+            executeGraphQLQuery(true);
         }
 
         /**
@@ -839,9 +905,9 @@
             }
 
             const logs = lastSuccessfulQueryResult.data.allLogsV2ByObjectId.nodes;
-            const headers = ALL_AUDIT_LOG_FIELDS; // Use all possible fields as headers for consistency
+            const headers = ALL_AUDIT_LOG_FIELDS;
 
-            let csvContent = headers.map(header => `"${header}"`).join(',') + '\n'; // CSV header row
+            let csvContent = headers.map(header => `"${header}"`).join(',') + '\n';
 
             logs.forEach(log => {
                 const row = headers.map(header => {
@@ -849,12 +915,10 @@
                     if (value === null || value === undefined) {
                         value = '';
                     } else if (typeof value === 'object') {
-                        // Stringify objects like changedFields and previousFields
                         value = JSON.stringify(value);
                     } else {
                         value = String(value);
                     }
-                    // Escape double quotes by doubling them, and enclose in quotes if value contains comma or double quote
                     if (value.includes(',') || value.includes('"')) {
                         value = `"${value.replace(/"/g, '""')}"`;
                     }
@@ -921,8 +985,12 @@
             offsetInput.value = '0';
             userIdInput.value = '';
             populateFieldsCheckboxes();
-            showTab('query-builder-tab');
+            showTab('query-builder-tab'); // Default to Query Builder tab
             validateInputs();
+
+            // Initialize the mutation and variables display for the "Remove Global Permissions" tab
+            removePermissionsMutationDisplay.value = REMOVE_GLOBAL_PERMISSIONS_MUTATION;
+            removePermissionsVariablesDisplay.value = REMOVE_GLOBAL_PERMISSIONS_VARIABLES;
         };
 
     </script>
